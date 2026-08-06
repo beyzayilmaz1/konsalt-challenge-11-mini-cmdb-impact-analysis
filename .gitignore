@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# SQLite (yerel veri)
+*.db
+*.db-journal
+
+# Geçici / editör
+.pytest_cache/
+.ruff_cache/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+_challenge11_brief.txt

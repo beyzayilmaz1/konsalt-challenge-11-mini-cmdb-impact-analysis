@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mini-CMDB API</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #0b1220;
+      --muted: #5b6578;
+      --line: #d8dee8;
+      --bg: #eef2f6;
+      --card: #ffffff;
+      --accent: #0f766e;
+      --accent-2: #115e59;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "DM Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(900px 420px at 10% -10%, rgba(15, 118, 110, 0.16), transparent 55%),
+        radial-gradient(700px 380px at 95% 0%, rgba(15, 23, 42, 0.08), transparent 50%),
+        var(--bg);
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 14px;
+    }
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 4vw, 2.75rem);
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+      font-weight: 700;
+    }
+    .lead {
+      margin: 0 0 28px;
+      max-width: 38rem;
+      font-size: 1.08rem;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 36px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 18px;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary {
+      background: linear-gradient(180deg, #0f766e, #0d9488);
+      color: #fff;
+      box-shadow: 0 8px 20px rgba(15, 118, 110, 0.25);
+    }
+    .btn-secondary {
+      background: var(--card);
+      color: var(--ink);
+      border-color: var(--line);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    @media (max-width: 800px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 18px 16px;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 1rem;
+      font-weight: 650;
+    }
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+    .code {
+      margin-top: 28px;
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 14px;
+      padding: 18px 20px;
+      font-family: "IBM Plex Mono", Consolas, monospace;
+      font-size: 0.86rem;
+      line-height: 1.55;
+      overflow-x: auto;
+    }
+    .code span { color: #5eead4; }
+    .meta {
+      margin-top: 22px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.7);
+      border: 1px solid var(--line);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="eyebrow">Konsalt · Challenge 11 Capstone</div>
+    <h1>Mini-CMDB API</h1>
+    <p class="lead">
+      Yapılandırma öğeleri ve ilişkiler üzerinde çalışan envanter servisi.
+      Discovery ile beslenir; BFS etki analizi ile “bu CI çökerse ne olur?” sorusuna cevap verir.
+    </p>
+    <div class="actions">
+      <a class="btn btn-primary" href="/docs">API Dokümantasyonu</a>
+      <a class="btn btn-secondary" href="/redoc">ReDoc</a>
+      <a class="btn btn-secondary" href="/health">Health</a>
+      <a class="btn btn-secondary" href="/openapi.json">OpenAPI JSON</a>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h2>CI &amp; İlişki</h2>
+        <p>server, application, database, process, port — yönlü kenarlar: calisir, bagimli, baglanir.</p>
+      </div>
+      <div class="card">
+        <h2>Etki analizi</h2>
+        <p>Ters yön BFS. Derinlik + kritiklik yolu. Döngüler ziyaret seti ile kesilir.</p>
+      </div>
+      <div class="card">
+        <h2>Discovery</h2>
+        <p>psutil → HTTP API (doğrudan DB yok). Upsert ile idempotent; multi-node destekli.</p>
+      </div>
+    </div>
+    <div class="code">
+      <div><span>GET</span>  /ci/{id}/etki      → etkilenen CI listesi</div>
+      <div><span>GET</span>  /ci/{id}/kok-neden → kök neden adayları</div>
+      <div><span>PUT</span>  /ci/by-name/{name} → discovery upsert</div>
+    </div>
+    <div class="meta">
+      <span class="pill">v2.0.0</span>
+      <span class="pill">FastAPI · SQLite · OpenAPI 3</span>
+      <span class="pill">Streamlit UI · port 8501</span>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,14 @@
+Etki analizi: ANKARA-DB01 cokerse ne olur?
+Etkilenen sayisi: 3
+
+--- ASCII agac (ters bagimlilik) ---
+ANKARA-DB01 (database)
+├── APP-ORDER (application) via bagimli  [d=1]
+│   └── FRONTEND-WEB (application) via bagimli  [d=2]
+└── APP-BILLING (application) via bagimli  [d=1]
+    └── FRONTEND-WEB (application) via bagimli  [d=2]
+
+--- Derinlik listesi ---
+  d=1: APP-ORDER (application)
+  d=2: FRONTEND-WEB (application)
+  d=1: APP-BILLING (application)

@@ -1,235 +1,187 @@
-# Mini-CMDB ve Etki Analizi — Teknik Rapor (README)
+# Mini-CMDB ve Etki Analizi
 
-**Program:** KONSALT Staj Programı 2026  
-**Challenge:** 11 — CAPSTONE: Mini-CMDB ve Etki Analizi  
-**Seviye:** Zor · **Ön koşul:** Challenge 6 (Mini Envanter API)  
-**Stack:** Python 3 · FastAPI · SQLite · psutil · Streamlit  
+**KONSALT Staj Programı 2026 — Challenge 11 (Capstone)**  
+Seviye: Zor · Stack: Python 3, FastAPI, SQLite, psutil, Streamlit  
 
-Bu belge, projede yapılan işlerin **aşama aşama** teknik özetidir. Mimari ayrıntılar için [MIMARI.md](MIMARI.md), canlı sunum akışı için [SUNUM.md](SUNUM.md).
+Bu README, projede **ne yapıldığını adım adım anlatır**. Mimari gerekçeler için [MIMARI.md](MIMARI.md).
 
-**Önemli:** Challenge 6 GitHub reposuna dokunulmadı. Challenge 6’daki FastAPI iskeleti (Pydantic modeller, `{"error": ...}` hata sözleşmesi, logging) bu projeye **yeniden uygulanarak** JSON kalıcılık SQLite + ilişki modeline taşındı.
+Challenge 6 Mini Envanter API bu işin ön koşuludur. O projedeki FastAPI iskeleti (Pydantic, hata gövdesi, logging) buraya taşındı; kalıcılık JSON dosyasından SQLite’a geçirildi. Challenge 6 reposuna **dokunulmadı**.
 
 ---
 
-## 0. Hazırlık
+## Adım 0 — Projeye nasıl başlandı?
 
-### 0.1 Bağımlılıklar
+Önce challenge’ın istediği veri modeli kâğıda çizildi: bir tarafta CI’lar (sunucu, uygulama, veritabanı, süreç, port), diğer tarafta aralarındaki yönlü ilişkiler (`calisir`, `bagimli`, `baglanir`). Amaç, “liste tutmak” değil; **ilişki grafı** kurup “şu CI çökerse kim etkilenir?” sorusuna cevap vermekti.
+
+Bağımlılıklar kuruldu:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Kurulan paketler: `fastapi`, `uvicorn`, `psutil`, `streamlit`, `httpx`, `requests`.
-
-### 0.2 Veri modeli (kâğıt tasarımı → kod)
-
-İki tablo kararlaştırıldı:
-
-| Tablo | Amaç |
-|-------|------|
-| `ci` | Configuration Item (düğüm) |
-| `iliski` | Yönlü kenar (kaynak → hedef) |
-
-İlişki tipleri: `calisir`, `bagimli`, `baglanir`.  
-CI tipleri: `server`, `application`, `database`, `process`, `port`.
+Ardından işler challenge görev sırasına göre yapıldı: önce veritabanı, sonra API, sonra discovery, sonra etki analizi, en sonda arayüz ve bonuslar.
 
 ---
 
-## 1. Aşama — Veritabanı katmanı (`db.py`)
+## Adım 1 — Veritabanı katmanı nasıl kuruldu?
 
-### Yapılanlar
+`db.py` yazıldı. ORM kullanılmadı; Python’un yerleşik `sqlite3` modülüyle SQL doğrudan görülsün istendi.
 
-1. `sqlite3` ile `ci` ve `iliski` tabloları oluşturuldu (ORM yok).
-2. `iliski.kaynak_ci` / `hedef_ci` → `ci.id` foreign key.
-3. `UNIQUE (kaynak_ci, hedef_ci, iliski_tipi)` ile aynı ilişkinin tekrar eklenmesi engellendi.
-4. Her bağlantıda `PRAGMA foreign_keys = ON` (SQLite varsayılanı kapalı).
-5. Windows dosya kilidi için bağlantı context manager ile `close()` edildi.
-6. Bonus: `kritiklik INTEGER 1..5` kolonu eklendi.
+İki tablo oluşturuldu:
 
-### Yardımcı fonksiyonlar
+- **`ci`:** her varlık bir satır. `id`, benzersiz `name`, `ci_type`, JSON `ozellikler`.
+- **`iliski`:** kaynak CI → hedef CI, ilişki tipi. Aynı üçlünün ikinci kez eklenmesini `UNIQUE` engeller. Kaynak/hedef `ci.id`’ye foreign key ile bağlıdır.
 
-| Fonksiyon | İş |
-|-----------|-----|
-| `init_db` | Şema oluşturma |
-| `insert_ci` / `upsert_ci` | CI yazma (discovery idempotency) |
-| `insert_iliski` | İlişki yazma (çakışmada kritiklik güncelle) |
-| `list_iliskiler_okunabilir` | `APP-X --calisir--> SRV-Y` formatı |
-| `etki_analizi` | Ters yön BFS |
-| `kok_neden_analizi` | İleri yön BFS (bonus) |
+SQLite’ta foreign key’ler varsayılan kapalı olduğu için her bağlantıda `PRAGMA foreign_keys = ON` çalıştırıldı. Windows’ta dosya kilidi yaşamamak için bağlantı iş bitince kapatıldı.
 
-### Kontrol noktası (geçildi)
+Bonus olarak ilişkilere `kritiklik` (1–5) eklendi; ileride etki analizinde kritik yolları öne çıkarmak için.
+
+Kontrol için elle 3 CI ve 2 ilişki eklendi, JOIN ile okundu:
 
 ```bash
 python db.py
 ```
 
-Çıktı:
+Beklenen çıktı:
 
 ```text
-CI sayısı: 3
-İlişki sayısı: 2
-İlişkiler:
-  APP-X --calisir--> SRV-Y
-  APP-X --bagimli--> DB-Z
+APP-X --calisir--> SRV-Y
+APP-X --bagimli--> DB-Z
 ```
+
+Bu kontrol noktası geçildiğinde bir sonraki adıma geçildi.
 
 ---
 
-## 2. Aşama — API katmanı (`main.py`)
+## Adım 2 — API katmanı nasıl taşındı?
 
-### Yapılanlar
+Challenge 6’daki envanter API düşüncesi SQLite şemasına uyarlandı. `main.py` FastAPI uygulaması oldu. Bellekteki `dict` + `envanter.json` yerine tüm okuma/yazma `db.py` üzerinden gitti.
 
-Challenge 6 API kalıpları bu şemaya taşındı:
+Yapılan uçlar şöyle:
 
-| Endpoint | Açıklama |
-|----------|----------|
-| `GET /health` | Sağlık |
-| `POST /ci` | CI ekle (isim çakışırsa 409) |
-| `GET /ci?ci_type=` | Liste + tip filtresi |
-| `GET /ci/{id}` | Tek CI |
-| `PUT /ci/by-name/{name}` | Upsert (discovery) |
-| `POST /iliski` | İlişki kur (CI yoksa 404) |
-| `GET /ci/{id}/iliskiler` | Giden + gelen ilişkiler |
-| `GET /ci/{id}/etki` | Etki analizi (Aşama 4) |
-| `GET /ci/{id}/kok-neden` | Kök neden (bonus) |
+Önce CI tarafı eklendi: yeni CI oluşturma (`POST /ci`), tip filtreli liste (`GET /ci`), tek kayıt (`GET /ci/{id}`). Discovery’nin aynı CI’yı tekrar tekrar yazabilmesi için isimle upsert (`PUT /ci/by-name/{name}`) eklendi.
 
-Hata gövdesi Challenge 6 ile aynı: `{"error": "..."}`; doğrulama hatalarında 422 + `details`.
+Sonra ilişki tarafı eklendi: iki CI arasında kenar kurma (`POST /iliski` — CI yoksa 404), bir CI’nın her iki yöndeki ilişkileri (`GET /ci/{id}/iliskiler`).
 
-### Kontrol noktası (geçildi)
+Hata formatı Challenge 6 ile aynı bırakıldı: `{"error": "..."}`. Böylece önceki challenge’daki sözleşme bozulmadı.
+
+API şöyle ayağa kalkar:
 
 ```bash
 python -m uvicorn main:app --reload --port 8000
 ```
 
-Swagger: http://localhost:8000/docs — CI ve ilişki oluşturup sorgulanabiliyor.
+- Portal: http://localhost:8000/
+- Swagger: http://localhost:8000/docs  
+
+Swagger’dan CI ve ilişki oluşturup sorgulamak bu adımın kontrol noktasıydı; geçildi.
 
 ---
 
-## 3. Aşama — Discovery (`discovery.py`)
+## Adım 3 — Discovery nasıl yazıldı?
 
-### Yapılanlar
+Envanteri elle doldurmak yerine `discovery.py` yazıldı. Script `psutil` ile makineyi tarar ama **doğrudan veritabanına yazmaz**; her şeyi HTTP ile API’ye gönderir. Bu, gerçek CMDB’lerde ajanın ayrı, CMDB’nin system of record olması kuralının minyatürüdür.
 
-`psutil` ile yerel makine tarandı; yazmalar **yalnızca HTTP API** üzerinden (doğrudan DB yok).
+Keşif sırası şöyle işler:
 
-| Keşif | CI tipi | İlişki |
-|-------|---------|--------|
-| Hostname, OS, RAM, CPU | `server` | — |
-| Allowlist süreçler (python, chrome, cursor, …) | `process` | `calisir` → server |
-| Dinlenen portlar | `port` | process → `baglanir` → port |
+1. Makinenin kendisi bir `server` CI olur (hostname, OS, RAM, CPU).
+2. Tüm süreçler değil; izin listesindeki ilginç süreçler (`python`, `chrome`, `cursor`, `node` vb.) `process` CI olur ve sunucuya `calisir` ilişkisiyle bağlanır.
+3. Dinleyen portlar `port` CI olur; hangi süreç dinliyorsa ona `baglanir` ilişkisi kurulur.
 
-Idempotency: CI adı stabil (`process:chrome`, PID yok); `PUT /ci/by-name/...` ile upsert.  
-İkinci koşuda kayıt sayısı artmadı.
+İkinci kez çalıştırınca duplicate oluşmaması için CI adları stabil tutuldu (isimde PID yok) ve upsert kullanıldı. Bu makinede birinci koşuda 15’ten fazla CI oluştu; ikinci koşuda net artış **sıfır** oldu.
 
-### Bu makinede ölçülen sonuç
-
-| Koşu | Toplam CI | Net artış |
-|------|-----------|-----------|
-| 1. discovery | ~45+ | yeni kayıtlar |
-| 2. discovery | aynı | **+0** |
-| Multi-node sim (`--node-name ARKADAS-LAPTOP`) | ~100 | ikinci düğüm CI’ları |
-| Multi-node 2. koşu | 100 | **+0** |
-
-### Kontrol noktası (geçildi)
-
-15+ CI ve ilişkiler var; ikinci koşu duplicate üretmiyor.
-
-**Not:** Port taraması bazı Windows ortamlarda yönetici izni ister. İzin yoksa süreç listesiyle yetinilir ([MIMARI.md](MIMARI.md)).
-
----
-
-## 4. Aşama — Etki analizi (`db.etki_analizi` + API)
-
-### Yapılanlar
-
-`GET /ci/{id}/etki`: “Bu CI çökerse ne etkilenir?”
-
-1. İlişkiler **ters** yönde okunur (`WHERE hedef_ci = ?`).
-2. BFS ile derinlik hesaplanır.
-3. `ziyaret` seti ile A→B→A döngüsü sonsuza girmez.
-4. Bonus: yoldaki max `kritiklik` → `yol_kritikligi`; ≥4 ise `kritik_yol`.
-
-Demo zinciri (`seed_senaryo.py`):
-
-```text
-FE-Portal --bagimli--> APP-Orders --bagimli--> ANKARA-DB01
-APP-Billing --bagimli--> ANKARA-DB01
+```bash
+python discovery.py
+python discovery.py   # net +0 beklenir
 ```
 
-### Kontrol noktası (geçildi)
+Port bilgisi bazı Windows kurulumlarında yönetici izni ister. İzin yoksa port adımı atlanır; süreç ve sunucu kayıtları yine yazılır. Bu durum mimari raporda da belirtilmiştir.
+
+---
+
+## Adım 4 — Etki analizi nasıl eklendi?
+
+Projenin kalbi `GET /ci/{id}/etki` uçudur. Soru: “Bu CI çökerse ne etkilenir?”
+
+İlişkiler kayıtta `APP --bagimli--> DB` yönünde tutulduğu için etki, okun **tersinden** okunur: DB çökünce DB’ye bağımlı olanlar etkilenir. Bu gezinme BFS ile yapıldı; her etkilenen için derinlik tutuldu. Aynı düğüme tekrar gelinmesin diye ziyaret seti kullanıldı (döngüde sonsuza düşülmesin diye).
+
+Test için `seed_senaryo.py` ile küçük bir zincir kuruldu: bir veritabanı, iki uygulama, bir frontend. Sonra:
 
 ```bash
 python seed_senaryo.py
 python etki.py ANKARA-DB01
 ```
 
-Sonuç: 3 CI — APP-Orders / APP-Billing (d=1), FE-Portal (d=2); kritik yollar ★ ile işaretli.
+Beklenen (ekran görüntüsü / sunum ile aynı):
+
+```text
+FRONTEND-WEB --bagimli(k=5)--> APP-ORDER --bagimli(k=5)--> ANKARA-DB01
+FRONTEND-WEB --bagimli(k=2)--> APP-BILLING --bagimli(k=2)--> ANKARA-DB01
+```
+
+`ANKARA-DB01` etkisi: **3 etkilenen**, **2 kritik yol**  
+(APP-ORDER d=1★, APP-BILLING d=1, FRONTEND-WEB d=2★). Döngü senaryosu sonsuza girmedi. Kontrol noktası geçildi.
 
 ---
 
-## 5. Aşama — Sunum arayüzü
+## Adım 5 — Sunum arayüzü nasıl yapıldı?
 
-### 5a. Streamlit (`arayuz.py`)
+Challenge en az bir arayüz istedi; ikisi de yapıldı.
 
-- CI listesi (tip filtresi)
-- Seçilen CI’nın ilişkileri
-- Etki analizi sonucu (“şu süreç ölürse ne olur?”)
-- Kök neden paneli (bonus)
+**Streamlit (`arayuz.py`):** Koyu sidebar, tip/isim filtresi, “Hangi CI çökerse?” seçimi; sekmeler: Etki analizi / İlişkiler / Kök neden. Özet kartlarda etkilenen ve kritik yol sayıları görünür.
 
 ```bash
 python -m streamlit run arayuz.py
 ```
 
-### 5b. CLI (`etki.py`)
+**CLI (`etki.py`):** ASCII ağaç basar. Ters bağımlılık ağacı + API’den gelen derinlik/kritiklik listesi birlikte gösterilir.
 
 ```bash
 python etki.py ANKARA-DB01
-python etki.py --id 50
 ```
 
-ASCII ağaç: derinlik girintisi + kritik bayrak.
-
-### Kontrol noktası (geçildi)
-
-Bilgisayarı bilmeyen biri arayüzden etki sorusunun cevabını görebiliyor.
+Böylece bilgisayarı bilmeyen biri de arayüzden etkiyi okuyabilir.
 
 ---
 
-## 6. Aşama — Bonuslar
+## Adım 6 — Bonuslar nasıl eklendi?
 
-| Bonus | Uygulama | Doğrulama |
-|-------|----------|-----------|
-| Kritiklik ağırlığı | `iliski.kritiklik` 1–5; etki sıralaması kritik yola göre | `verify_challenge.py` |
-| Multi-node discovery | `--api-base`, `--node-name`; CI adı `{node}::...` | `discovery.py --node-name ARKADAS-LAPTOP` |
-| Kök neden | `GET /ci/{id}/kok-neden` ileri BFS | FE → APP → DB derinlikleri |
+Erken bitince üç bonus da uygulandı:
+
+**Kritiklik:** İlişkiye 1–5 ağırlık verildi. Etki sonucunda yoldaki en yüksek kritiklik taşınır; 4 ve üzeri `kritik_yol` olur ve listede öne çıkar.
+
+**Multi-node:** Discovery’ye `--api-base` ve `--node-name` eklendi. İkinci bir makine (veya aynı makinede simülasyon) API’ye yazınca CI adları `ARKADAS-LAPTOP::process:chrome` gibi namespace’lenir; düğümler çakışmaz. İkinci koşu yine +0 verir.
+
+**Kök neden:** `GET /ci/{id}/kok-neden` eklendi. Etki analizinin tersi: “bu uygulama yavaşsa altına bak” — ileri yön BFS.
 
 ---
 
-## 7. Doğrulama ve teslim
+## Adım 7 — Nasıl doğrulandı ve ne teslim edildi?
 
-### Otomatik test
+Uçtan uca kontrol:
 
 ```bash
 python verify_challenge.py
+python test_etki.py
+python -m pytest -q
 ```
 
-Beklenen kapanış: `TÜM GÖREV VE BONUS TESTLERİ GEÇTİ`.
+Beklenen: görev + bonus testlerinin geçmesi ve pytest’in yeşil olması.
 
-### Teslim dosyaları
+Teslim edilen başlıca parçalar:
 
-| Dosya | Rol |
-|-------|-----|
-| `db.py` | Veritabanı katmanı |
-| `main.py` | API |
-| `discovery.py` | Keşif ajanı |
-| `seed_senaryo.py` | Etki demo senaryosu |
-| `etki.py` | CLI arayüz |
-| `arayuz.py` | Streamlit arayüz |
-| `verify_challenge.py` | Kontrol noktaları |
+| Dosya / klasör | Ne işe yarar |
+|----------------|--------------|
+| `db.py` | SQLite şema, CRUD, BFS |
+| `main.py` | API, portal, Swagger |
+| `discovery.py` | psutil keşif (yalnızca HTTP) |
+| `seed_senaryo.py` | Etki demo zinciri |
+| `etki.py` / `arayuz.py` | CLI + Streamlit |
+| `static/` | Portal ve Swagger teması |
+| `tests/` | pytest testleri |
 | `MIMARI.md` | Mimari teknik rapor |
-| `SUNUM.md` | 5 dk sunum senaryosu |
-| `README.md` | Bu belge |
 
-### Çalıştırma özeti (sıra)
+### Sıfırdan çalıştırma sırası
 
 ```bash
 pip install -r requirements.txt
@@ -241,4 +193,5 @@ python etki.py ANKARA-DB01
 python -m streamlit run arayuz.py
 python verify_challenge.py
 ```
-"# konsalt-challenge-11-mini-cmdb-impact-analysis" 
+
+Port 8000 doluysa (`WinError 10013`) eski Python sürecini kapatın veya `--port 8001` kullanın.
